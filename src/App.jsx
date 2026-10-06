@@ -23,6 +23,11 @@ const DEF_SCOLORS    = ["#5a430a","#6b5010","#6b5010","#6b5010","#6b5010"];
 const LABEL_Y        = [156, 118, 78, 38, 5];
 const NAMES_DEFAULT  = ["The Zip Code","The Region","The State","The Nation","The World"];
 
+const MODES = [
+  { id:"zip",     label:"ZIP code",     placeholder:"Enter any U.S. ZIP code" },
+  { id:"city",    label:"City, State",  placeholder:"e.g. Chester, VA" },
+  { id:"address", label:"Home address", placeholder:"e.g. 123 Main St, Chester, VA" },
+];
 const AGES       = ["Under 25","25–34","35–44","45–54","55–64","65+"];
 const HOUSEHOLDS = ["Single, no children","Couple, no children","Family with young children","Family with school-age children","Family with adult children","Caring for an aging parent","Retired"];
 const HOUSING    = ["Own","Rent","Other"];
@@ -36,10 +41,12 @@ const loadProfile = () => {
 };
 
 export default function App() {
-  const [zip, setZip]         = useState("23831");
+  const [mode, setMode]       = useState("zip");
+  const [query, setQuery]     = useState("23831");
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState(null);
   const [error, setError]     = useState(null);
+  const [progress, setProgress] = useState(0);
   const [profile, setProfile] = useState(loadProfile);
   const [showProfile, setShowProfile] = useState(() => !!loadProfile().objectives);
 
@@ -76,28 +83,52 @@ export default function App() {
                         profile.occupation || profile.priorities.length || profile.objectives.trim());
 
   const run = async () => {
-    if (!/^\d{5}$/.test(zip)) { setError("Please enter a valid 5-digit ZIP code."); return; }
-    setLoading(true); setError(null); setResult(null);
+    const q = query.trim();
+    if (mode === "zip" && !/^\d{5}$/.test(q)) { setError("Please enter a valid 5-digit ZIP code."); return; }
+    if (mode === "city" && !/[A-Za-z]{2}.*,?\s*[A-Za-z]{2}/.test(q)) { setError("Enter a city and state, e.g. Chester, VA."); return; }
+    if (mode === "address" && q.length < 6) { setError("Enter a full street address, e.g. 123 Main St, Chester, VA."); return; }
+    setLoading(true); setError(null); setResult(null); setProgress(0);
 
     try {
       // ── Calls the Netlify function, not Anthropic directly ──
       const res = await fetch("/.netlify/functions/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zip, profile: hasProfile ? profile : undefined }),
+        body: JSON.stringify({ mode, query: q, profile: hasProfile ? profile : undefined }),
       });
 
-      const text = await res.text();
-      let d;
-      try { d = JSON.parse(text); }
-      catch {
-        throw new Error(res.status === 504 || res.status === 502
+      if (!res.ok) {
+        const t = await res.text();
+        let msg;
+        try { msg = JSON.parse(t).error; } catch { /* gateway HTML */ }
+        throw new Error(msg || (res.status === 504 || res.status === 502
           ? "The analysis timed out. Please try again."
-          : `Server returned a non-JSON response (HTTP ${res.status}).`);
+          : `Server returned an unexpected response (HTTP ${res.status}).`));
       }
-      if (!res.ok) throw new Error(d.error || "Request failed");
 
-      const raw = (d.content?.find(b => b.type === "text")?.text || "").trim();
+      // Read the Anthropic server-sent event stream and collect the text deltas.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "", raw = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
+            raw += ev.delta.text;
+            setProgress(raw.length);
+          } else if (ev.type === "error") {
+            throw new Error(ev.error?.message || "Stream error");
+          }
+        }
+      }
+      raw = raw.trim();
       const clean = raw.replace(/^```(?:json)?/,"").replace(/```$/,"").trim();
       const start = clean.indexOf("{"), end = clean.lastIndexOf("}");
       if (start === -1) throw new Error("No JSON in response");
@@ -150,31 +181,49 @@ export default function App() {
       </div>
 
       {/* ── INPUT ── */}
-      <div style={{ display:"flex", gap:"8px", width:"100%", maxWidth:"520px",
-                    marginBottom:"12px", animation:"fadeIn 0.7s ease 0.1s both" }}>
-        <input
-          value={zip}
-          onChange={e => { setZip(e.target.value.replace(/\D/g,"").slice(0,5)); setError(null); }}
-          onKeyDown={e => e.key === "Enter" && run()}
-          placeholder="Enter any U.S. ZIP code"
-          maxLength={5}
-          inputMode="numeric"
-          style={{ ...field, flex:1, fontSize:"18px", padding:"12px 16px", letterSpacing:"0.08em",
-                   border:`2px solid ${T.line}` }}
-          onFocus={e => e.target.style.borderColor = T.goldBright}
-          onBlur={e  => e.target.style.borderColor = T.line}
-        />
-        <button
-          onClick={run}
-          disabled={loading}
-          style={{ background: loading ? "#d8cfb8" : T.gold,
-                   color: loading ? "#6b6350" : "#fff",
-                   border:"none", padding:"12px 24px", borderRadius:6,
-                   cursor: loading ? "not-allowed" : "pointer",
-                   fontFamily:"'Bebas Neue',sans-serif", fontSize:"20px",
-                   letterSpacing:"0.12em", whiteSpace:"nowrap" }}>
-          {loading ? "ANALYZING…" : "ANALYZE"}
-        </button>
+      <div style={{ width:"100%", maxWidth:"620px", marginBottom:"12px", animation:"fadeIn 0.7s ease 0.1s both" }}>
+        <div role="tablist" style={{ display:"flex", gap:"6px", justifyContent:"center", marginBottom:"10px", flexWrap:"wrap" }}>
+          {MODES.map(m => (
+            <button key={m.id} role="tab" aria-selected={mode === m.id}
+              onClick={() => { setMode(m.id); setQuery(m.id === "zip" ? "23831" : ""); setError(null); }}
+              style={{ fontSize:"15px", fontWeight:700, padding:"8px 16px", borderRadius:999, cursor:"pointer",
+                       border:`1.5px solid ${mode === m.id ? T.gold : T.line}`,
+                       background: mode === m.id ? T.gold : "#fff", color: mode === m.id ? "#fff" : T.body }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:"8px" }}>
+          <input
+            value={query}
+            onChange={e => { setQuery(mode === "zip" ? e.target.value.replace(/\D/g,"").slice(0,5) : e.target.value.slice(0,200)); setError(null); }}
+            onKeyDown={e => e.key === "Enter" && run()}
+            placeholder={MODES.find(m => m.id === mode).placeholder}
+            maxLength={mode === "zip" ? 5 : 200}
+            inputMode={mode === "zip" ? "numeric" : "text"}
+            autoComplete={mode === "address" ? "street-address" : "off"}
+            style={{ ...field, flex:1, fontSize:"18px", padding:"12px 16px",
+                     letterSpacing: mode === "zip" ? "0.08em" : "normal", border:`2px solid ${T.line}` }}
+            onFocus={e => e.target.style.borderColor = T.goldBright}
+            onBlur={e  => e.target.style.borderColor = T.line}
+          />
+          <button
+            onClick={run}
+            disabled={loading}
+            style={{ background: loading ? "#d8cfb8" : T.gold,
+                     color: loading ? "#6b6350" : "#fff",
+                     border:"none", padding:"12px 24px", borderRadius:6,
+                     cursor: loading ? "not-allowed" : "pointer",
+                     fontFamily:"'Bebas Neue',sans-serif", fontSize:"20px",
+                     letterSpacing:"0.12em", whiteSpace:"nowrap" }}>
+            {loading ? "ANALYZING…" : "ANALYZE"}
+          </button>
+        </div>
+        {mode === "address" && (
+          <p style={{ fontSize:"13px", color:T.muted, textAlign:"center", marginTop:"8px" }}>
+            Your address is sent to a public geocoding service and to the AI only to find your neighborhood. This app does not store it.
+          </p>
+        )}
       </div>
 
       {/* ── PROFILE ── */}
@@ -264,7 +313,7 @@ export default function App() {
           </svg>
           <div style={{ fontFamily:"'DM Serif Display',serif", fontStyle:"italic",
                         fontSize:"18px", color:T.body }}>
-            Mapping circles for {zip}…
+            Mapping circles for {query.trim()}…{progress > 0 && ` (${Math.min(99, Math.round(progress / 30))}%)`}
           </div>
         </div>
       )}
@@ -282,7 +331,7 @@ export default function App() {
               </div>
               <div style={{ fontSize:"14px", fontWeight:700, letterSpacing:"0.12em",
                             textTransform:"uppercase", color:T.muted, marginTop:"3px" }}>
-                {loc.county} · {loc.region} · ZIP {zip}
+                {[loc.county, loc.region, loc.zip && `ZIP ${loc.zip}`].filter(Boolean).join(" · ")}
               </div>
             </div>
 
@@ -353,7 +402,7 @@ export default function App() {
                           fill="#3a2c0c" letterSpacing="0.08em">YOU</text>
                     <text x="230" y="240" textAnchor="middle"
                           fontFamily="'DM Sans',sans-serif" fontWeight="700" fontSize="9"
-                          fill="#5a430a">{zip}</text>
+                          fill="#5a430a">{loc.zip || ""}</text>
                   </g>
 
                   {[1,2,3,4,5].map(n => {
@@ -386,7 +435,7 @@ export default function App() {
                 <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"18px",
                               letterSpacing:"0.16em", color:T.gold, marginBottom:"12px",
                               paddingBottom:"6px", borderBottom:`2px solid ${T.line}` }}>
-                  Circle Analysis — {loc.city}, {loc.stateAbbr} {zip}
+                  Circle Analysis — {loc.city}, {loc.stateAbbr} {loc.zip}
                 </div>
 
                 {[1,2,3,4,5].map(n => {
