@@ -100,7 +100,7 @@ export default function App() {
       if (!res.ok) {
         const t = await res.text();
         let msg;
-        try { msg = JSON.parse(t).error; } catch { /* gateway HTML */ }
+        try { const j = JSON.parse(t); msg = j.error && (j.detail ? `${j.error} (${j.detail})` : j.error); } catch { /* gateway HTML */ }
         throw new Error(msg || (res.status === 504 || res.status === 502
           ? "The analysis timed out. Please try again."
           : `Server returned an unexpected response (HTTP ${res.status}).`));
