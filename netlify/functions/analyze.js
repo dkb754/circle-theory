@@ -103,8 +103,19 @@ export default async (req) => {
       const data = await upstream.json().catch(() => ({}));
       return json(upstream.status, { error: data.error?.message || "API error" });
     }
-    // Pass the Anthropic server-sent events straight through to the browser.
-    return new Response(upstream.body, {
+    // Send the verified location first, then pass the Anthropic server-sent events through,
+    // so the browser can show the resolved place rather than trusting the model's wording.
+    const reader = upstream.body.getReader();
+    const head = new TextEncoder().encode(`data: ${JSON.stringify({ type: "resolved", place })}\n\n`);
+    const stream = new ReadableStream({
+      start(c) { c.enqueue(head); },
+      async pull(c) {
+        const { done, value } = await reader.read();
+        if (done) c.close(); else c.enqueue(value);
+      },
+      cancel() { return reader.cancel(); },
+    });
+    return new Response(stream, {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache" },
     });
