@@ -57,7 +57,14 @@ export default function App() {
         body: JSON.stringify({ zip }),
       });
 
-      const d = await res.json();
+      const text = await res.text();
+      let d;
+      try { d = JSON.parse(text); }
+      catch {
+        throw new Error(res.status === 504 || res.status === 502
+          ? "The analysis timed out. Please try again."
+          : `Server returned a non-JSON response (HTTP ${res.status}).`);
+      }
       if (!res.ok) throw new Error(d.error || "Request failed");
 
       const raw = (d.content?.find(b => b.type === "text")?.text || "").trim();

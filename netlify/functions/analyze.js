@@ -20,8 +20,9 @@ export const handler = async (event) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 3000,
+        // Haiku keeps generation under Netlify's ~10s synchronous function limit
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 2500,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: `Analyze ZIP code: ${zip}. Return ONLY the JSON object.` }],
       }),
