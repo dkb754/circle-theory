@@ -40,6 +40,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState(null);
   const [error, setError]     = useState(null);
+  const [progress, setProgress] = useState(0);
   const [profile, setProfile] = useState(loadProfile);
   const [showProfile, setShowProfile] = useState(() => !!loadProfile().objectives);
 
@@ -77,7 +78,7 @@ export default function App() {
 
   const run = async () => {
     if (!/^\d{5}$/.test(zip)) { setError("Please enter a valid 5-digit ZIP code."); return; }
-    setLoading(true); setError(null); setResult(null);
+    setLoading(true); setError(null); setResult(null); setProgress(0);
 
     try {
       // ── Calls the Netlify function, not Anthropic directly ──
@@ -87,17 +88,38 @@ export default function App() {
         body: JSON.stringify({ zip, profile: hasProfile ? profile : undefined }),
       });
 
-      const text = await res.text();
-      let d;
-      try { d = JSON.parse(text); }
-      catch {
-        throw new Error(res.status === 504 || res.status === 502
+      if (!res.ok) {
+        const t = await res.text();
+        let msg;
+        try { msg = JSON.parse(t).error; } catch { /* gateway HTML */ }
+        throw new Error(msg || (res.status === 504 || res.status === 502
           ? "The analysis timed out. Please try again."
-          : `Server returned a non-JSON response (HTTP ${res.status}).`);
+          : `Server returned an unexpected response (HTTP ${res.status}).`));
       }
-      if (!res.ok) throw new Error(d.error || "Request failed");
 
-      const raw = (d.content?.find(b => b.type === "text")?.text || "").trim();
+      // Read the Anthropic server-sent event stream and collect the text deltas.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "", raw = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
+            raw += ev.delta.text;
+            setProgress(raw.length);
+          } else if (ev.type === "error") {
+            throw new Error(ev.error?.message || "Stream error");
+          }
+        }
+      }
+      raw = raw.trim();
       const clean = raw.replace(/^```(?:json)?/,"").replace(/```$/,"").trim();
       const start = clean.indexOf("{"), end = clean.lastIndexOf("}");
       if (start === -1) throw new Error("No JSON in response");
@@ -264,7 +286,7 @@ export default function App() {
           </svg>
           <div style={{ fontFamily:"'DM Serif Display',serif", fontStyle:"italic",
                         fontSize:"18px", color:T.body }}>
-            Mapping circles for {zip}…
+            Mapping circles for {zip}…{progress > 0 && ` (${Math.min(99, Math.round(progress / 30))}%)`}
           </div>
         </div>
       )}

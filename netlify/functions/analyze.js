@@ -13,19 +13,22 @@ const profileText = (p) => {
   return lines.length ? "\n\nUser profile:\n" + lines.map(([k, v]) => `${k}: ${v}`).join("\n") : "";
 };
 
-export const handler = async (event) => {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Method not allowed" }) };
-  }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "API key not configured" }) };
-  }
+const json = (status, obj) =>
+  new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
+
+// Netlify Functions v2: returning a Response with a stream body streams it to the client,
+// so bytes flow while the model is still generating instead of waiting for the full reply.
+export default async (req) => {
+  if (req.method !== "POST") return json(405, { error: "Method not allowed" });
+  if (!process.env.ANTHROPIC_API_KEY) return json(500, { error: "API key not configured" });
+
+  let body;
+  try { body = await req.json(); } catch { body = {}; }
+  const { zip, profile } = body;
+  if (!zip || !/^\d{5}$/.test(zip)) return json(400, { error: "Invalid ZIP code" });
+
   try {
-    const { zip, profile } = JSON.parse(event.body || "{}");
-    if (!zip || !/^\d{5}$/.test(zip)) {
-      return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Invalid ZIP code" }) };
-    }
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -33,19 +36,23 @@ export const handler = async (event) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        // Haiku keeps generation under Netlify's ~10s synchronous function limit
         model: "claude-haiku-4-5-20251001",
         max_tokens: 3000,
+        stream: true,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: `Analyze ZIP code: ${zip}.${profileText(profile)}\n\nReturn ONLY the JSON object.` }],
       }),
     });
-    const data = await response.json();
-    if (!response.ok) {
-      return { statusCode: response.status, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: data.error?.message || "API error" }) };
+    if (!upstream.ok) {
+      const data = await upstream.json().catch(() => ({}));
+      return json(upstream.status, { error: data.error?.message || "API error" });
     }
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
+    // Pass the Anthropic server-sent events straight through to the browser.
+    return new Response(upstream.body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache" },
+    });
   } catch (error) {
-    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: error.message }) };
+    return json(500, { error: error.message });
   }
 };
