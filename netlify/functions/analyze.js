@@ -24,7 +24,45 @@ const nominatim = (params) =>
     format: "jsonv2", addressdetails: "1", countrycodes: "us", limit: "1", ...params }));
 
 // Resolve the user's input to a verified place. Returns null when nothing matches.
-async function resolveLocation(mode, query) {
+const toTitle = (t) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+const STATES = { alabama:"AL", alaska:"AK", arizona:"AZ", arkansas:"AR", california:"CA", colorado:"CO", connecticut:"CT",
+  delaware:"DE", "district of columbia":"DC", florida:"FL", georgia:"GA", hawaii:"HI", idaho:"ID", illinois:"IL", indiana:"IN",
+  iowa:"IA", kansas:"KS", kentucky:"KY", louisiana:"LA", maine:"ME", maryland:"MD", massachusetts:"MA", michigan:"MI",
+  minnesota:"MN", mississippi:"MS", missouri:"MO", montana:"MT", nebraska:"NE", nevada:"NV", "new hampshire":"NH",
+  "new jersey":"NJ", "new mexico":"NM", "new york":"NY", "north carolina":"NC", "north dakota":"ND", ohio:"OH", oklahoma:"OK",
+  oregon:"OR", pennsylvania:"PA", "rhode island":"RI", "south carolina":"SC", "south dakota":"SD", tennessee:"TN", texas:"TX",
+  utah:"UT", vermont:"VT", virginia:"VA", washington:"WA", "west virginia":"WV", wisconsin:"WI", wyoming:"WY" };
+const ABBRS = Object.fromEntries(Object.entries(STATES).map(([n, a]) => [a, toTitle(n)]));
+const SUFFIX = "(?:ave|avenue|st|street|rd|road|dr|drive|ln|lane|blvd|boulevard|ct|court|cir|circle|way|pkwy|parkway|hwy|highway|pl|place|ter|terrace|trl|trail|sq|square|loop|pike|run|row|path|walk)";
+
+// Split free text like "14100 botsford ave chester virginia" into street / city / state / zip.
+function parseAddress(raw) {
+  let t = raw.replace(/\s+/g, " ").replace(/,?\s*(usa|u\.s\.a\.?|united states)$/i, "").trim();
+  const zm = t.match(/[,\s]+(\d{5})(?:-\d{4})?$/);
+  const zip = zm ? zm[1] : "";
+  if (zm) t = t.slice(0, zm.index).trim();
+  let abbr = "", rest = t;
+  const lower = t.toLowerCase().replace(/,/g, " ").replace(/\s+/g, " ");
+  const name = Object.keys(STATES).sort((a, b) => b.length - a.length).find((n) => lower === n || lower.endsWith(" " + n));
+  if (name) { abbr = STATES[name]; rest = t.slice(0, t.length - name.length).replace(/[,\s]+$/, ""); }
+  else {
+    const am = t.match(/[,\s]+([A-Za-z]{2})$/);
+    if (am && ABBRS[am[1].toUpperCase()]) { abbr = am[1].toUpperCase(); rest = t.slice(0, am.index); }
+  }
+  if (!abbr) return { zip };
+  let street = "", city = "";
+  if (rest.includes(",")) {
+    const parts = rest.split(",").map((x) => x.trim()).filter(Boolean);
+    street = parts[0]; city = parts.slice(1).join(" ");
+  } else {
+    const m = rest.match(new RegExp(`^(.*?\\b${SUFFIX}\\b\\.?)\\s+(.+)$`, "i"));
+    if (m) { street = m[1]; city = m[2]; }
+  }
+  if (!street || !city) return { zip, abbr, city: rest.includes(",") ? "" : "" };
+  return { street, city, abbr, zip };
+}
+
+async function resolveLocation(mode, query, tried = []) {
   if (mode === "zip") {
     const z = await getJson(`https://api.zippopotam.us/us/${query}`).catch(() => null);
     const pl = z?.places?.[0];
@@ -49,26 +87,45 @@ async function resolveLocation(mode, query) {
   };
 
   if (mode === "address") {
-    // 1) US Census geocoder: authoritative for US street addresses (no API key).
-    try {
-      const c = await getJson("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?" +
-        new URLSearchParams({ address: query, benchmark: "Public_AR_Current", vintage: "Current_Current",
-                              layers: "Counties", format: "json" }));
-      const m = c?.result?.addressMatches?.[0];
-      if (m) return {
-        zip: m.addressComponents?.zip || "", city: toTitle(m.addressComponents?.city || ""),
-        county: m.geographies?.Counties?.[0]?.NAME || "", state: "", stateAbbr: m.addressComponents?.state || "",
-        lat: String(m.coordinates?.y ?? ""), lon: String(m.coordinates?.x ?? ""), matched: m.matchedAddress,
-      };
-    } catch { /* fall through to the next source */ }
-    // 2) OpenStreetMap with the full text.
-    const full = (await nominatim({ q: query }))[0];
-    if (full) return fromNominatim(full);
-    // 3) Street not found: drop the house number and match the street/neighborhood.
-    const noNum = query.replace(/^\s*\d+[A-Za-z]?\s+/, "");
-    if (noNum !== query) {
-      const hit = (await nominatim({ q: noNum }))[0];
-      if (hit) return fromNominatim(hit, { approximate: true });
+    const pa = parseAddress(query);
+    const stateName = pa.abbr ? ABBRS[pa.abbr] : "";
+    const tidy = pa.street ? `${pa.street}, ${pa.city}, ${pa.abbr}${pa.zip ? " " + pa.zip : ""}` : query;
+    const swallow = (p, label) => p.catch((e) => { tried.push(`${label} failed`); return null; });
+
+    // 1) US Census geocoder (authoritative for street addresses) and OSM structured search, in parallel.
+    const census = swallow(getJson("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?" +
+      new URLSearchParams({ address: tidy, benchmark: "Public_AR_Current", vintage: "Current_Current",
+                            layers: "Counties", format: "json" })), "census");
+    const osmStruct = pa.street ? swallow(nominatim({ street: pa.street, city: pa.city, state: stateName,
+                                                       ...(pa.zip && { postalcode: pa.zip }) }), "osm-structured") : Promise.resolve(null);
+    const [c, os] = await Promise.all([census, osmStruct]);
+    const m = c?.result?.addressMatches?.[0];
+    if (m) return {
+      zip: m.addressComponents?.zip || "", city: toTitle(m.addressComponents?.city || ""),
+      county: m.geographies?.Counties?.[0]?.NAME || "", state: ABBRS[m.addressComponents?.state] || "",
+      stateAbbr: m.addressComponents?.state || "",
+      lat: String(m.coordinates?.y ?? ""), lon: String(m.coordinates?.x ?? ""), matched: m.matchedAddress,
+    };
+    tried.push("census: no match");
+    if (os?.[0]) return fromNominatim(os[0]);
+    if (pa.street) tried.push("osm-structured: no match");
+
+    // 2) OSM free-text search with the cleaned-up address.
+    const free = await swallow(nominatim({ q: tidy }), "osm-text");
+    if (free?.[0]) return fromNominatim(free[0]);
+    tried.push("osm-text: no match");
+
+    // 3) Street number not on file: match the street (no number), then the city, as approximate.
+    if (pa.street) {
+      const noNum = pa.street.replace(/^\s*\d+[A-Za-z]?\s+/, "");
+      const st = await swallow(nominatim({ street: noNum, city: pa.city, state: stateName }), "osm-street");
+      if (st?.[0]) return fromNominatim(st[0], { approximate: true });
+      tried.push("osm-street: no match");
+    }
+    if (pa.city && pa.abbr) {
+      const ci = await swallow(nominatim({ city: pa.city, state: stateName }), "osm-city");
+      if (ci?.[0]) return fromNominatim(ci[0], { approximate: true, matched: `${toTitle(pa.city)}, ${stateName} (street not found)` });
+      tried.push("osm-city: no match");
     }
     return null;
   }
@@ -76,7 +133,6 @@ async function resolveLocation(mode, query) {
   const hit = (await nominatim({ q: query }))[0];
   return hit ? fromNominatim(hit) : null;
 }
-const toTitle = (t) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const locationText = (l) => !l ? "" :
   "\n\nResolved location (verified, authoritative):\n" +
   [["Matched address", l.matched], ["City", l.city], ["County", l.county], ["State", l.state || l.stateAbbr],
@@ -102,7 +158,8 @@ export default async (req) => {
   if (mode === "address" && query.length < 6) return json(400, { error: "Enter a full street address" });
 
   let place = null;
-  try { place = await resolveLocation(mode, query); }
+  const tried = [];
+  try { place = await resolveLocation(mode, query, tried); }
   catch (e) {
     // Lookup service down: a ZIP can still be analyzed from the model's own knowledge; others cannot.
     if (mode !== "zip") return json(502, { error: "Location lookup is unavailable right now. Please try again, or use a ZIP code." });
@@ -110,7 +167,7 @@ export default async (req) => {
   }
   if (!place) return json(404, { error: mode === "zip"
     ? `We couldn't find ZIP code ${query}. Check the number and try again.`
-    : "We couldn't find that location. Check the spelling, or add the state." });
+    : "We couldn't find that location. Check the spelling, or add the state.", detail: tried.join("; ") });
 
   try {
     const upstream = await fetch("https://api.anthropic.com/v1/messages", {
