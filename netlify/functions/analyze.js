@@ -1,6 +1,6 @@
 const SYSTEM_PROMPT = `You are a socio-geographic analyst applying the "Concentric Circle Theory." Return ONLY a raw valid JSON object with this structure: {"location":{"city":"","county":"","state":"","stateAbbr":"","region":""},"circles":[{"number":1,"name":"The Zip Code","geography":"","status":"normal","action":"Act","description":"","currentContext":"","keyIssues":[]},{"number":2,"name":"The Region","geography":"","status":"normal","action":"Engage","description":"","currentContext":"","keyIssues":[]},{"number":3,"name":"The State","geography":"","status":"normal","action":"Monitor","description":"","currentContext":"","keyIssues":[]},{"number":4,"name":"The Nation","geography":"United States","status":"normal","action":"Track","description":"","currentContext":"","keyIssues":[]},{"number":5,"name":"The World","geography":"Global","status":"normal","action":"Aware","description":"","currentContext":"","keyIssues":[]}],"compressionEvents":[],"overallStatus":"normal","overallAssessment":""}. Fill every field with real geographic and policy knowledge for the ZIP code. Status: normal, elevated, or pressure. Be specific and useful.`;
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Method not allowed" }) };
   }
