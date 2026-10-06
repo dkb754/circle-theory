@@ -28,12 +28,18 @@ const MODES = [
   { id:"city",    label:"City, State",  placeholder:"e.g. Chester, VA" },
   { id:"address", label:"Home address", placeholder:"e.g. 123 Main St, Chester, VA" },
 ];
+const DOMAIN_LETTERS = { political:"P", military:"M", economic:"E", social:"S", information:"I", infrastructure:"I", environment:"PT", time:"T" };
+const LIKELY = {
+  high:     { bg:"rgba(179,38,30,0.10)", col:"#a32018", label:"High likelihood" },
+  moderate: { bg:"rgba(180,95,6,0.12)",  col:"#9a4f00", label:"Moderate likelihood" },
+  low:      { bg:"rgba(138,100,16,0.12)", col:"#6b5010", label:"Low likelihood" },
+};
 const AGES       = ["Under 25","25–34","35–44","45–54","55–64","65+"];
 const HOUSEHOLDS = ["Single, no children","Couple, no children","Family with young children","Family with school-age children","Family with adult children","Caring for an aging parent","Retired"];
 const HOUSING    = ["Own","Rent","Other"];
 const INCOMES    = ["Under $40k","$40k–$75k","$75k–$125k","$125k–$200k","Over $200k"];
 const PRIORITIES = ["Family","Safety","Schools","Housing costs","Health care","Jobs & career","Small business","Faith & community","Civic involvement","Environment","Taxes","Retirement"];
-const EMPTY_PROFILE = { age:"", household:"", housing:"", income:"", occupation:"", priorities:[], objectives:"" };
+const EMPTY_PROFILE = { age:"", household:"", housing:"", income:"", occupation:"", priorities:[], objectives:"", watchlist:"" };
 
 const loadProfile = () => {
   try { return { ...EMPTY_PROFILE, ...JSON.parse(localStorage.getItem("ctProfile") || "{}") }; }
@@ -80,7 +86,7 @@ export default function App() {
     profile.priorities.includes(x) ? profile.priorities.filter(y => y !== x) : [...profile.priorities, x]);
   const clearProfile = () => { setProfile(EMPTY_PROFILE); try { localStorage.removeItem("ctProfile"); } catch {} };
   const hasProfile = !!(profile.age || profile.household || profile.housing || profile.income ||
-                        profile.occupation || profile.priorities.length || profile.objectives.trim());
+                        profile.occupation || profile.priorities.length || profile.objectives.trim() || profile.watchlist.trim());
 
   const run = async () => {
     const q = query.trim();
@@ -109,7 +115,7 @@ export default function App() {
       // Read the Anthropic server-sent event stream and collect the text deltas.
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buf = "", raw = "", place = null;
+      let buf = "", raw = "", place = null, news = null;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -121,7 +127,7 @@ export default function App() {
           let ev;
           try { ev = JSON.parse(line.slice(5)); } catch { continue; }
           if (ev.type === "resolved") {
-            place = ev.place;
+            place = ev.place; news = ev.news;
           } else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
             raw += ev.delta.text;
             setProgress(raw.length);
@@ -141,6 +147,7 @@ export default function App() {
       parsed.location = { ...(parsed.location || {}), ...verified };
       parsed.verified = !!place?.city;
       parsed.matched = place?.matched || "";
+      parsed.news = news;
       parsed.approximate = !!place?.approximate;
       setResult(parsed);
     } catch(e) {
@@ -287,6 +294,15 @@ export default function App() {
                 onChange={e => setP("objectives", e.target.value)}
                 placeholder="e.g. Run for school board in two years, keep my business open, help my neighbors, retire here comfortably…"
                 style={{ ...field, resize:"vertical", lineHeight:1.5 }} />
+            </div>
+            <div>
+              <label style={lab}>Events or topics to watch (comma-separated, up to 4)</label>
+              <input value={profile.watchlist} maxLength={200}
+                onChange={e => setP("watchlist", e.target.value)}
+                placeholder="e.g. Iran, midterm elections, plague in Russia" style={field} />
+              <p style={{ fontSize:"13px", color:T.muted, marginTop:"5px" }}>
+                Each gets its own forecast in the PMESII-PT section, based on current headlines.
+              </p>
             </div>
             <button onClick={clearProfile}
               style={{ alignSelf:"flex-start", background:"none", border:"none", color:T.muted,
@@ -539,6 +555,75 @@ export default function App() {
                 <div style={{ fontSize:"17px", color:T.body, lineHeight:1.65 }}>
                   {result.overallAssessment}
                 </div>
+              </div>
+            )}
+
+            {/* ── PMESII-PT FORECAST ── */}
+            {result.pmesii?.domains?.length > 0 && (
+              <div style={{ width:"100%", maxWidth:"1100px", marginTop:"26px", animation:"fadeIn 0.7s ease 0.32s both" }}>
+                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"24px", letterSpacing:"0.12em", color:T.gold }}>
+                  PMESII-PT Forecast
+                </div>
+                <p style={{ fontSize:"14px", color:T.muted, margin:"2px 0 14px", lineHeight:1.5 }}>
+                  {result.news?.count > 0
+                    ? `Built from ${result.news.count} news headlines from the past 7 days (as of ${result.news.asOf}). Headlines are unverified reporting; forecasts are estimates, not predictions.`
+                    : "No live headlines could be retrieved, so these forecasts come from general knowledge and may be out of date."}
+                </p>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:"14px" }}>
+                  {result.pmesii.domains.map((d, i) => {
+                    const lk = LIKELY[d.likelihood] || LIKELY.moderate;
+                    return (
+                      <div key={i} style={{ background:T.card, border:`1px solid ${T.line}`, borderRadius:8, padding:"16px 18px",
+                                            boxShadow:"0 1px 3px rgba(60,45,10,0.08)" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"8px" }}>
+                          <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"18px", background:T.gold, color:"#fff",
+                                         minWidth:34, height:34, borderRadius:6, display:"inline-flex", alignItems:"center",
+                                         justifyContent:"center", letterSpacing:"0.04em" }}>
+                            {DOMAIN_LETTERS[d.key] || (d.name || "?")[0]}
+                          </span>
+                          <span style={{ fontFamily:"'DM Serif Display',serif", fontSize:"20px", color:T.text }}>{d.name}</span>
+                        </div>
+                        {d.assessment && <p style={{ fontSize:"15.5px", color:T.body, lineHeight:1.55, marginBottom:"8px" }}>{d.assessment}</p>}
+                        {d.events?.length > 0 && (
+                          <ul style={{ paddingLeft:"20px", fontSize:"14.5px", color:T.body, lineHeight:1.5, marginBottom:"8px" }}>
+                            {d.events.map((e, j) => <li key={j} style={{ marginBottom:"3px" }}>{e}</li>)}
+                          </ul>
+                        )}
+                        {d.forecast && (
+                          <p style={{ fontSize:"15px", color:T.text, lineHeight:1.5, marginBottom:"10px" }}>
+                            <strong>Forecast{d.horizon ? ` (${d.horizon})` : ""}:</strong> {d.forecast}
+                          </p>
+                        )}
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:"6px", alignItems:"center" }}>
+                          <span style={{ fontSize:"12.5px", fontWeight:700, color:lk.col, background:lk.bg, padding:"3px 9px", borderRadius:4 }}>{lk.label}</span>
+                          {d.circles?.map(n => (
+                            <span key={n} style={{ fontSize:"12.5px", fontWeight:700, color:T.body, background:T.cardAlt,
+                                                   border:`1px solid ${T.line}`, padding:"2px 8px", borderRadius:4 }}>Circle {n}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {result.pmesii.watchlist?.length > 0 && (
+                  <div style={{ marginTop:"16px", background:"#fffaf0", border:`2px solid ${T.goldBright}`, borderRadius:8, padding:"18px 20px" }}>
+                    <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"20px", letterSpacing:"0.12em", color:T.gold, marginBottom:"10px" }}>
+                      Your Watchlist
+                    </div>
+                    {result.pmesii.watchlist.map((w, i) => {
+                      const lk = LIKELY[w.likelihood] || LIKELY.moderate;
+                      return (
+                        <div key={i} style={{ marginBottom: i < result.pmesii.watchlist.length - 1 ? "12px" : 0, fontSize:"15.5px", lineHeight:1.55, color:T.body }}>
+                          <strong style={{ color:T.text }}>{w.event}</strong>{" "}
+                          <span style={{ fontSize:"12.5px", fontWeight:700, color:lk.col, background:lk.bg, padding:"2px 8px", borderRadius:4 }}>{lk.label}</span>
+                          {w.circles?.length > 0 && <span style={{ fontSize:"13px", color:T.muted }}> · Circles {w.circles.join(", ")}</span>}
+                          <div>{w.forecast}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

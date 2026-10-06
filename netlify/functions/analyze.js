@@ -1,4 +1,5 @@
-const SYSTEM_PROMPT = `You are a socio-geographic analyst applying the "Concentric Circle Theory." Return ONLY a raw valid JSON object. No markdown, no backticks. Structure: {"location":{"city":"","county":"","state":"","stateAbbr":"","zip":"","region":""},"circles":[{"number":1,"name":"The Zip Code","geography":"","status":"normal","action":"Act","description":"","currentContext":"","keyIssues":[]},{"number":2,"name":"The Region","geography":"","status":"normal","action":"Engage","description":"","currentContext":"","keyIssues":[]},{"number":3,"name":"The State","geography":"","status":"normal","action":"Monitor","description":"","currentContext":"","keyIssues":[]},{"number":4,"name":"The Nation","geography":"United States","status":"normal","action":"Track","description":"","currentContext":"","keyIssues":[]},{"number":5,"name":"The World","geography":"Global","status":"normal","action":"Aware","description":"","currentContext":"","keyIssues":[]}],"compressionEvents":[],"overallStatus":"normal","overallAssessment":"","personal":{"summary":"","priorities":[{"circle":1,"focus":"","why":""}],"actions":[],"watchOuts":[]}}. The user message gives a verified "Resolved location"; treat it as authoritative and never substitute a different place. Fill every field with real geographic and policy knowledge for that location (for a street address, circle 1 is its neighborhood and ZIP code). Status options: normal, elevated, pressure. Keep every string concise (1-2 sentences max) and keyIssues to at most 4 short items. If the user supplies a profile (demographics, priorities, personal objectives), tailor currentContext, overallAssessment and the "personal" section to it: "priorities" ranks up to 4 circles where the user's attention is best spent for their objectives, "actions" gives 3-5 concrete next steps aligned with their stated objectives, "watchOuts" lists 2-3 outer-circle forces most likely to affect someone with their profile. If no profile is given, set "personal" to {"summary":"","priorities":[],"actions":[],"watchOuts":[]}.`;
+const SYSTEM_PROMPT = `You are a socio-geographic analyst applying the "Concentric Circle Theory." Return ONLY a raw valid JSON object. No markdown, no backticks. Structure: {"location":{"city":"","county":"","state":"","stateAbbr":"","zip":"","region":""},"circles":[{"number":1,"name":"The Zip Code","geography":"","status":"normal","action":"Act","description":"","currentContext":"","keyIssues":[]},{"number":2,"name":"The Region","geography":"","status":"normal","action":"Engage","description":"","currentContext":"","keyIssues":[]},{"number":3,"name":"The State","geography":"","status":"normal","action":"Monitor","description":"","currentContext":"","keyIssues":[]},{"number":4,"name":"The Nation","geography":"United States","status":"normal","action":"Track","description":"","currentContext":"","keyIssues":[]},{"number":5,"name":"The World","geography":"Global","status":"normal","action":"Aware","description":"","currentContext":"","keyIssues":[]}],"compressionEvents":[],"overallStatus":"normal","overallAssessment":"","pmesii":{"domains":[{"key":"political","name":"Political","assessment":"","events":[],"forecast":"","likelihood":"moderate","horizon":"","circles":[]}],"watchlist":[{"event":"","forecast":"","likelihood":"moderate","circles":[]}]},"personal":{"summary":"","priorities":[{"circle":1,"focus":"","why":""}],"actions":[],"watchOuts":[]}}. The user message gives a verified "Resolved location"; treat it as authoritative and never substitute a different place. Fill every field with real geographic and policy knowledge for that location (for a street address, circle 1 is its neighborhood and ZIP code). Status options: normal, elevated, pressure. Keep every string concise (1-2 sentences max) and keyIssues to at most 4 short items. PMESII-PT: "pmesii.domains" must contain exactly 8 objects with keys political, military, economic, social, information, infrastructure, environment (Physical Environment), time (tempo, deadlines and windows such as election dates, seasons, how soon effects reach inner circles). For each: "assessment" (1 sentence on the current state as it bears on this location), "events" (0-3 short strings of CURRENT emerging events, each ending with its source in parentheses), "forecast" (1 sentence on what is likely over the horizon), "likelihood" (low, moderate or high), "horizon" (e.g. "30-90 days"), "circles" (numbers 1-5 of the circles most affected). Emerging events MUST come from the numbered headlines supplied in the user message; never invent events, dates or sources. If a domain has no supporting headline, set events to [] and give a base-rate forecast beginning "No current reporting;". "pmesii.watchlist" has one entry per topic the user asked to watch (empty array if none): the event, a forecast of how it could play out and reach this location, likelihood, and circles affected. Treat headlines as unverified reporting, not fact.
+ If the user supplies a profile (demographics, priorities, personal objectives), tailor currentContext, overallAssessment and the "personal" section to it: "priorities" ranks up to 4 circles where the user's attention is best spent for their objectives, "actions" gives 3-5 concrete next steps aligned with their stated objectives, "watchOuts" lists 2-3 outer-circle forces most likely to affect someone with their profile. If no profile is given, set "personal" to {"summary":"","priorities":[],"actions":[],"watchOuts":[]}.`;
 
 const clip = (v, n = 400) => String(v ?? "").slice(0, n);
 const profileText = (p) => {
@@ -133,6 +134,43 @@ async function resolveLocation(mode, query, tried = []) {
   const hit = (await nominatim({ q: query }))[0];
   return hit ? fromNominatim(hit) : null;
 }
+const decode = (t) => t.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").trim();
+async function headlines(q, n = 5) {
+  const url = "https://news.google.com/rss/search?" + new URLSearchParams({ q: `${q} when:7d`, hl: "en-US", gl: "US", ceid: "US:en" });
+  const r = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(3500) });
+  if (!r.ok) throw new Error(`news ${r.status}`);
+  const xml = await r.text();
+  return xml.split("<item>").slice(1, n + 1).map((it) => {
+    const get = (tag) => decode((it.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) || [])[1] || "");
+    const source = get("source");
+    let title = get("title");
+    if (source && title.endsWith(" - " + source)) title = title.slice(0, -(source.length + 3));
+    return { title, source, date: get("pubDate").slice(5, 16) };
+  }).filter((h) => h.title);
+}
+// Current headlines for each ring plus the user's watchlist topics. Never throws.
+async function gatherNews(place, watch) {
+  const where = [place?.city, place?.stateAbbr || place?.state].filter(Boolean).join(" ");
+  const state = place?.state || ABBRS[place?.stateAbbr] || "";
+  const groups = [
+    where && { label: "Local (circles 1-2)", q: where },
+    state && { label: "State (circle 3)", q: `${state} politics economy` },
+    { label: "Nation (circle 4)", q: "United States politics economy security" },
+    { label: "World (circle 5)", q: "world geopolitics conflict outbreak" },
+    ...watch.map((w) => ({ label: `Watchlist: ${w}`, q: w })),
+  ].filter(Boolean);
+  const out = await Promise.all(groups.map((g) => headlines(g.q, g.label.startsWith("Watchlist") ? 4 : 5).then((items) => ({ ...g, items })).catch(() => ({ ...g, items: [] }))));
+  const seen = new Set(); let i = 0, count = 0;
+  const lines = out.map((g) => {
+    const rows = g.items.filter((h) => !seen.has(h.title) && seen.add(h.title))
+      .map((h) => { count++; return `${++i}. ${h.title} (${h.source || "unknown"}, ${h.date})`; });
+    return rows.length ? `${g.label}:\n${rows.join("\n")}` : `${g.label}: no headlines found`;
+  });
+  return { text: lines.join("\n"), count };
+}
+const parseWatch = (v) => String(v ?? "").split(/[\n,;]+/).map((x) => x.trim().slice(0, 60)).filter(Boolean).slice(0, 4);
+
 const locationText = (l) => !l ? "" :
   "\n\nResolved location (verified, authoritative):\n" +
   [["Matched address", l.matched], ["City", l.city], ["County", l.county], ["State", l.state || l.stateAbbr],
@@ -169,6 +207,12 @@ export default async (req) => {
     ? `We couldn't find ZIP code ${query}. Check the number and try again.`
     : "We couldn't find that location. Check the spelling, or add the state.", detail: tried.join("; ") });
 
+  const watch = parseWatch(profile?.watchlist);
+  const today = new Date().toISOString().slice(0, 10);
+  const news = await gatherNews(place, watch).catch(() => ({ text: "", count: 0 }));
+  const newsText = `\n\nToday's date: ${today}.\nCurrent headlines (last 7 days, unverified):\n` +
+    (news.count ? news.text : "none available; label all forecasts as general knowledge, not current reporting");
+
   try {
     const upstream = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -179,10 +223,10 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 3000,
+        max_tokens: 5000,
         stream: true,
         system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: `Analyze this location: ${query}.${locationText(place)}${profileText(profile)}\n\nReturn ONLY the JSON object.` }],
+        messages: [{ role: "user", content: `Analyze this location: ${query}.${locationText(place)}${profileText(profile)}${newsText}\n\nReturn ONLY the JSON object.` }],
       }),
     });
     if (!upstream.ok) {
@@ -192,7 +236,7 @@ export default async (req) => {
     // Send the verified location first, then pass the Anthropic server-sent events through,
     // so the browser can show the resolved place rather than trusting the model's wording.
     const reader = upstream.body.getReader();
-    const head = new TextEncoder().encode(`data: ${JSON.stringify({ type: "resolved", place })}\n\n`);
+    const head = new TextEncoder().encode(`data: ${JSON.stringify({ type: "resolved", place, news: { count: news.count, asOf: today, watch } })}\n\n`);
     const stream = new ReadableStream({
       start(c) { c.enqueue(head); },
       async pull(c) {
