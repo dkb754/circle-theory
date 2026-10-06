@@ -34,6 +34,18 @@ const LIKELY = {
   moderate: { bg:"rgba(180,95,6,0.12)",  col:"#9a4f00", label:"Moderate likelihood" },
   low:      { bg:"rgba(138,100,16,0.12)", col:"#6b5010", label:"Low likelihood" },
 };
+// Models occasionally return objects where strings are expected; render them as readable text.
+const txt = (v) => {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object") {
+    const main = v.event || v.description || v.summary || v.title || v.name || v.issue || v.text;
+    if (main) return [v.circle != null ? `Circle ${v.circle}` : "", main].filter(Boolean).join(": ");
+    return Object.values(v).filter(x => typeof x === "string").join(" — ");
+  }
+  return String(v);
+};
+
 const AGES       = ["Under 25","25–34","35–44","45–54","55–64","65+"];
 const HOUSEHOLDS = ["Single, no children","Couple, no children","Family with young children","Family with school-age children","Family with adult children","Caring for an aging parent","Retired"];
 const HOUSING    = ["Own","Rent","Other"];
@@ -385,7 +397,7 @@ export default function App() {
                     Compression Event — {loc.city}, {loc.stateAbbr}
                   </div>
                   <div style={{ fontSize:"15px", color:T.body, lineHeight:1.55 }}>
-                    {(result.compressionEvents || []).join(" · ") || "Outer-ring forces are bleeding into inner-circle realities."}
+                    {(result.compressionEvents || []).map(txt).join(" · ") || "Outer-ring forces are bleeding into inner-circle realities."}
                   </div>
                 </div>
               </div>
@@ -521,7 +533,7 @@ export default function App() {
                               <span key={i} style={{ fontSize:"14px", color:T.body,
                                                      background:T.cardAlt, border:`1px solid ${T.line}`,
                                                      padding:"3px 10px", borderRadius:4 }}>
-                                {iss}
+                                {txt(iss)}
                               </span>
                             ))}
                           </div>
@@ -586,7 +598,7 @@ export default function App() {
                         {d.assessment && <p style={{ fontSize:"15.5px", color:T.body, lineHeight:1.55, marginBottom:"8px" }}>{d.assessment}</p>}
                         {d.events?.length > 0 && (
                           <ul style={{ paddingLeft:"20px", fontSize:"14.5px", color:T.body, lineHeight:1.5, marginBottom:"8px" }}>
-                            {d.events.map((e, j) => <li key={j} style={{ marginBottom:"3px" }}>{e}</li>)}
+                            {d.events.map((e, j) => <li key={j} style={{ marginBottom:"3px" }}>{txt(e)}</li>)}
                           </ul>
                         )}
                         {d.forecast && (
@@ -657,7 +669,7 @@ export default function App() {
                     <div style={{ flex:"1 1 300px" }}>
                       <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:T.muted, marginBottom:"8px" }}>Next steps</div>
                       <ol style={{ paddingLeft:"22px", fontSize:"16px", lineHeight:1.55, color:T.body }}>
-                        {personal.actions.map((a,i) => <li key={i} style={{ marginBottom:"6px" }}>{a}</li>)}
+                        {personal.actions.map((a,i) => <li key={i} style={{ marginBottom:"6px" }}>{txt(a)}</li>)}
                       </ol>
                     </div>
                   )}
@@ -665,7 +677,7 @@ export default function App() {
                     <div style={{ flex:"1 1 300px" }}>
                       <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:"#a32018", marginBottom:"8px" }}>Watch-outs</div>
                       <ul style={{ paddingLeft:"22px", fontSize:"16px", lineHeight:1.55, color:T.body }}>
-                        {personal.watchOuts.map((a,i) => <li key={i} style={{ marginBottom:"6px" }}>{a}</li>)}
+                        {personal.watchOuts.map((a,i) => <li key={i} style={{ marginBottom:"6px" }}>{txt(a)}</li>)}
                       </ul>
                     </div>
                   )}
