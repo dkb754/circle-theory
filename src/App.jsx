@@ -3,47 +3,77 @@
 
 import { useState, useEffect } from "react";
 
+const T = {
+  bg:"#faf6ee", card:"#ffffff", cardAlt:"#fdf9ef", line:"#e2d6b8",
+  text:"#1f1a10", body:"#3a3326", muted:"#5c523c", gold:"#8a6410", goldBright:"#C9A84C",
+};
 const SC = {
-  normal:   { stroke:"#C9A84C", lCol:"#e4c97e", sCol:"#C9A84C", aBg:"rgba(201,168,76,0.1)",  aCol:"#C9A84C", border:"#C9A84C", dot:"#C9A84C", dotB:"#e4c97e", badge:null },
-  elevated: { stroke:"#d47a0a", lCol:"#e8953a", sCol:"#d47a0a", aBg:"rgba(212,122,10,0.1)",  aCol:"#d47a0a", border:"#d47a0a", dot:"#d47a0a", dotB:"#e8953a", badge:"⚠ Elevated" },
-  pressure: { stroke:"#c0392b", lCol:"#e07070", sCol:"#c0392b", aBg:"rgba(192,57,43,0.12)",  aCol:"#e07070", border:"#c0392b", dot:"#c0392b", dotB:"#e07070", badge:"⚠ Pressure" },
+  normal:   { stroke:"#8a6a1c", lCol:"#3a2c0c", sCol:"#6b5010", aBg:"rgba(138,100,16,0.12)", aCol:"#7a5a0c", border:"#C9A84C", dot:"#C9A84C", dotB:"#8a6a1c", badge:null },
+  elevated: { stroke:"#b45f06", lCol:"#7a3d00", sCol:"#9a4f00", aBg:"rgba(180,95,6,0.12)",  aCol:"#9a4f00", border:"#d47a0a", dot:"#d47a0a", dotB:"#9a4f00", badge:"⚠ Elevated" },
+  pressure: { stroke:"#b3261e", lCol:"#8a1a14", sCol:"#a32018", aBg:"rgba(179,38,30,0.10)", aCol:"#a32018", border:"#c0392b", dot:"#c0392b", dotB:"#8a1a14", badge:"⚠ Pressure" },
 };
 
 const RADII          = [54, 90, 130, 170, 210];
-const DEF_FILLS      = ["#C9A84C","#2a1e0e","#1c1408","#110c06","#0a0705"];
-const DEF_STROKES    = ["#e4c97e","#a87838","#7a5828","#3D2E10","#1e1608"];
+const DEF_FILLS      = ["#C9A84C","#ecd9a6","#f3e8c8","#f8f1de","#fdf9ef"];
+const DEF_STROKES    = ["#8a6a1c","#a98a3c","#b89c58","#c8b078","#d6c496"];
 const DEF_LABELS     = ["ZIP CODE","REGION","STATE","NATION","WORLD"];
 const DEF_ACTIONS    = ["ACT","ENGAGE","MONITOR","TRACK","AWARE"];
-const DEF_LCOLORS    = ["#e4c97e","#c49a5a","#9e7844","#5a3810","#3d2e10"];
-const DEF_SCOLORS    = ["#C9A84C","#a87838","#7a5828","#3D2E10","#1e1608"];
-const LABEL_Y        = [166, 129, 92, 54, 17];
+const DEF_LCOLORS    = ["#3a2c0c","#3a2c0c","#3a2c0c","#3a2c0c","#3a2c0c"];
+const DEF_SCOLORS    = ["#5a430a","#6b5010","#6b5010","#6b5010","#6b5010"];
+const LABEL_Y        = [156, 118, 78, 38, 5];
 const NAMES_DEFAULT  = ["The Zip Code","The Region","The State","The Nation","The World"];
+
+const AGES       = ["Under 25","25–34","35–44","45–54","55–64","65+"];
+const HOUSEHOLDS = ["Single, no children","Couple, no children","Family with young children","Family with school-age children","Family with adult children","Caring for an aging parent","Retired"];
+const HOUSING    = ["Own","Rent","Other"];
+const INCOMES    = ["Under $40k","$40k–$75k","$75k–$125k","$125k–$200k","Over $200k"];
+const PRIORITIES = ["Family","Safety","Schools","Housing costs","Health care","Jobs & career","Small business","Faith & community","Civic involvement","Environment","Taxes","Retirement"];
+const EMPTY_PROFILE = { age:"", household:"", housing:"", income:"", occupation:"", priorities:[], objectives:"" };
+
+const loadProfile = () => {
+  try { return { ...EMPTY_PROFILE, ...JSON.parse(localStorage.getItem("ctProfile") || "{}") }; }
+  catch { return EMPTY_PROFILE; }
+};
 
 export default function App() {
   const [zip, setZip]         = useState("23831");
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState(null);
   const [error, setError]     = useState(null);
+  const [profile, setProfile] = useState(loadProfile);
+  const [showProfile, setShowProfile] = useState(() => !!loadProfile().objectives);
 
   useEffect(() => {
     const link = document.createElement("link");
-    link.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap";
+    link.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;700&display=swap";
     link.rel = "stylesheet";
     document.head.appendChild(link);
 
     const s = document.createElement("style");
     s.textContent = `
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: #07070a; }
+      body { background: ${T.bg}; }
+      select, input, textarea, button { font-family: inherit; }
       @keyframes fadeIn  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
       @keyframes ringIn  { from{stroke-dashoffset:1500;opacity:0} to{stroke-dashoffset:0;opacity:1} }
-      @keyframes hotPulse{ 0%,100%{opacity:0.15} 50%{opacity:0.65} }
+      @keyframes hotPulse{ 0%,100%{opacity:0.25} 50%{opacity:0.9} }
       @keyframes beat    { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
       @keyframes orbitCW { to{transform:rotate(360deg)} }
       @keyframes orbitCC { to{transform:rotate(-360deg)} }
     `;
     document.head.appendChild(s);
   }, []);
+
+  const setP = (k, v) => setProfile(p => {
+    const n = { ...p, [k]: v };
+    try { localStorage.setItem("ctProfile", JSON.stringify(n)); } catch {}
+    return n;
+  });
+  const togglePriority = (x) => setP("priorities",
+    profile.priorities.includes(x) ? profile.priorities.filter(y => y !== x) : [...profile.priorities, x]);
+  const clearProfile = () => { setProfile(EMPTY_PROFILE); try { localStorage.removeItem("ctProfile"); } catch {} };
+  const hasProfile = !!(profile.age || profile.household || profile.housing || profile.income ||
+                        profile.occupation || profile.priorities.length || profile.objectives.trim());
 
   const run = async () => {
     if (!/^\d{5}$/.test(zip)) { setError("Please enter a valid 5-digit ZIP code."); return; }
@@ -54,7 +84,7 @@ export default function App() {
       const res = await fetch("/.netlify/functions/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zip }),
+        body: JSON.stringify({ zip, profile: hasProfile ? profile : undefined }),
       });
 
       const text = await res.text();
@@ -81,62 +111,138 @@ export default function App() {
   const circ = (n) => result?.circles?.find(x => x.number === n);
   const cfg  = (n) => SC[circ(n)?.status] || SC.normal;
   const hasCompression = result?.circles?.some(x => x.status !== "normal");
-  const overBorder = { compressed:"#c0392b", elevated:"#d47a0a", normal:"#7a6230" }[result?.overallStatus] || "#7a6230";
+  const overBorder = { compressed:"#c0392b", pressure:"#c0392b", elevated:"#d47a0a", normal:"#8a6a1c" }[result?.overallStatus] || "#8a6a1c";
+  const personal = result?.personal;
+  const hasPersonal = personal && (personal.summary || personal.actions?.length || personal.priorities?.length || personal.watchOuts?.length);
+
+  const field = { width:"100%", background:"#fff", border:`1px solid ${T.line}`, color:T.text,
+                  fontSize:"15px", padding:"10px 12px", borderRadius:6, outline:"none" };
+  const lab   = { display:"block", fontSize:"13px", fontWeight:700, color:T.body, marginBottom:"5px" };
+  const Select = ({ k, label, opts }) => (
+    <div style={{ flex:"1 1 200px" }}>
+      <label style={lab}>{label}</label>
+      <select value={profile[k]} onChange={e => setP(k, e.target.value)} style={field}>
+        <option value="">Prefer not to say</option>
+        {opts.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
 
   return (
-    <div style={{ background:"#07070a", color:"#F5F0E8", fontFamily:"'DM Sans',sans-serif",
+    <div style={{ background:T.bg, color:T.text, fontFamily:"'DM Sans',sans-serif", fontSize:"16px",
                   minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center",
                   padding:"32px 16px 64px" }}>
 
       {/* ── HEADER ── */}
-      <div style={{ textAlign:"center", marginBottom:"22px", animation:"fadeIn 0.7s ease both" }}>
-        <div style={{ fontSize:"9.5px", fontWeight:500, letterSpacing:"0.32em",
-                      textTransform:"uppercase", color:"#4a4030", marginBottom:"6px" }}>
+      <div style={{ textAlign:"center", marginBottom:"24px", animation:"fadeIn 0.7s ease both" }}>
+        <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.22em",
+                      textTransform:"uppercase", color:T.muted, marginBottom:"8px" }}>
           A Personal Philosophy of Intentional Attention
         </div>
-        <h1 style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"clamp(30px,5.5vw,56px)",
-                     letterSpacing:"0.06em", lineHeight:1, marginBottom:"5px" }}>
-          The Concentric <span style={{ color:"#C9A84C" }}>Circle Theory</span>
+        <h1 style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"clamp(36px,6vw,64px)",
+                     letterSpacing:"0.06em", lineHeight:1, marginBottom:"8px" }}>
+          The Concentric <span style={{ color:T.gold }}>Circle Theory</span>
         </h1>
         <div style={{ fontFamily:"'DM Serif Display',serif", fontStyle:"italic",
-                      fontSize:"13px", color:"#3a3a3a" }}>
+                      fontSize:"18px", color:T.body }}>
           Know your rings. Protect your energy. Serve your zip code.
         </div>
       </div>
 
       {/* ── INPUT ── */}
-      <div style={{ display:"flex", gap:"8px", width:"100%", maxWidth:"420px",
-                    marginBottom:"22px", animation:"fadeIn 0.7s ease 0.1s both" }}>
+      <div style={{ display:"flex", gap:"8px", width:"100%", maxWidth:"520px",
+                    marginBottom:"12px", animation:"fadeIn 0.7s ease 0.1s both" }}>
         <input
           value={zip}
           onChange={e => { setZip(e.target.value.replace(/\D/g,"").slice(0,5)); setError(null); }}
           onKeyDown={e => e.key === "Enter" && run()}
           placeholder="Enter any U.S. ZIP code"
           maxLength={5}
-          style={{ flex:1, background:"#0f0f12", border:"1px solid #222", color:"#F5F0E8",
-                   fontFamily:"'DM Sans',sans-serif", fontSize:"16px", padding:"11px 16px",
-                   borderRadius:"5px", outline:"none", letterSpacing:"0.08em", transition:"border-color 0.2s" }}
-          onFocus={e => e.target.style.borderColor = "#C9A84C"}
-          onBlur={e  => e.target.style.borderColor = "#222"}
+          inputMode="numeric"
+          style={{ ...field, flex:1, fontSize:"18px", padding:"12px 16px", letterSpacing:"0.08em",
+                   border:`2px solid ${T.line}` }}
+          onFocus={e => e.target.style.borderColor = T.goldBright}
+          onBlur={e  => e.target.style.borderColor = T.line}
         />
         <button
           onClick={run}
           disabled={loading}
-          style={{ background: loading ? "#151515" : "#C9A84C",
-                   color: loading ? "#444" : "#07070a",
-                   border:"none", padding:"11px 20px", borderRadius:"5px",
+          style={{ background: loading ? "#d8cfb8" : T.gold,
+                   color: loading ? "#6b6350" : "#fff",
+                   border:"none", padding:"12px 24px", borderRadius:6,
                    cursor: loading ? "not-allowed" : "pointer",
-                   fontFamily:"'Bebas Neue',sans-serif", fontSize:"15px",
-                   letterSpacing:"0.14em", whiteSpace:"nowrap", transition:"background 0.2s" }}>
+                   fontFamily:"'Bebas Neue',sans-serif", fontSize:"20px",
+                   letterSpacing:"0.12em", whiteSpace:"nowrap" }}>
           {loading ? "ANALYZING…" : "ANALYZE"}
         </button>
       </div>
 
+      {/* ── PROFILE ── */}
+      <div style={{ width:"100%", maxWidth:"760px", marginBottom:"22px", animation:"fadeIn 0.7s ease 0.15s both" }}>
+        <button onClick={() => setShowProfile(v => !v)}
+          style={{ background:"none", border:"none", color:T.gold, fontSize:"15px", fontWeight:700,
+                   cursor:"pointer", textDecoration:"underline", display:"block", margin:"0 auto" }}>
+          {showProfile ? "▾ Hide" : "▸ Personalize"} your profile &amp; objectives
+          {hasProfile && !showProfile ? " (saved)" : ""}
+        </button>
+
+        {showProfile && (
+          <div style={{ background:T.card, border:`1px solid ${T.line}`, borderRadius:8,
+                        padding:"20px", marginTop:"12px", display:"flex", flexDirection:"column", gap:"16px" }}>
+            <p style={{ fontSize:"14px", color:T.muted, lineHeight:1.5 }}>
+              Everything here is optional. It is sent only with your analysis request to tailor the results,
+              and is saved in this browser only.
+            </p>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:"14px" }}>
+              <Select k="age" label="Age range" opts={AGES} />
+              <Select k="household" label="Household" opts={HOUSEHOLDS} />
+              <Select k="housing" label="Housing" opts={HOUSING} />
+              <Select k="income" label="Household income" opts={INCOMES} />
+              <div style={{ flex:"1 1 200px" }}>
+                <label style={lab}>Occupation / industry</label>
+                <input value={profile.occupation} maxLength={120}
+                  onChange={e => setP("occupation", e.target.value)}
+                  placeholder="e.g. teacher, restaurant owner" style={field} />
+              </div>
+            </div>
+            <div>
+              <label style={lab}>What matters most to you? (pick any)</label>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:"8px" }}>
+                {PRIORITIES.map(x => {
+                  const on = profile.priorities.includes(x);
+                  return (
+                    <button key={x} type="button" onClick={() => togglePriority(x)} aria-pressed={on}
+                      style={{ fontSize:"14px", padding:"7px 13px", borderRadius:999, cursor:"pointer",
+                               border:`1.5px solid ${on ? T.gold : T.line}`,
+                               background: on ? T.gold : "#fff", color: on ? "#fff" : T.body,
+                               fontWeight: on ? 700 : 500 }}>
+                      {x}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <label style={lab}>Your personal objectives</label>
+              <textarea value={profile.objectives} maxLength={600} rows={3}
+                onChange={e => setP("objectives", e.target.value)}
+                placeholder="e.g. Run for school board in two years, keep my business open, help my neighbors, retire here comfortably…"
+                style={{ ...field, resize:"vertical", lineHeight:1.5 }} />
+            </div>
+            <button onClick={clearProfile}
+              style={{ alignSelf:"flex-start", background:"none", border:"none", color:T.muted,
+                       fontSize:"14px", cursor:"pointer", textDecoration:"underline" }}>
+              Clear profile
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* ── ERROR ── */}
       {error && (
-        <div style={{ width:"100%", maxWidth:"420px", background:"rgba(192,57,43,0.08)",
-                      border:"1px solid rgba(192,57,43,0.28)", borderRadius:"5px",
-                      padding:"10px 14px", fontSize:"12px", color:"#e07070", marginBottom:"16px" }}>
+        <div style={{ width:"100%", maxWidth:"520px", background:"rgba(179,38,30,0.08)",
+                      border:"1px solid rgba(179,38,30,0.4)", borderRadius:6,
+                      padding:"12px 16px", fontSize:"15px", color:"#8a1a14", marginBottom:"16px" }}>
           {error}
         </div>
       )}
@@ -148,8 +254,8 @@ export default function App() {
           <svg width="110" height="110" viewBox="0 0 110 110">
             {[46,36,26,16,6].map((r,i) => (
               <circle key={i} cx="55" cy="55" r={r} fill="none"
-                stroke={["#C9A84C","#a87838","#7a5828","#4a3418","#2a1a08"][i]}
-                strokeWidth={i === 0 ? 2 : 1.5}
+                stroke={["#8a6a1c","#a98a3c","#b89c58","#c8b078","#d6c496"][i]}
+                strokeWidth={i === 0 ? 2.5 : 2}
                 strokeDasharray={`${r * 0.55} ${r * 0.1}`}
                 style={{ transformBox:"fill-box", transformOrigin:"center",
                          animation:`${i%2===0?"orbitCW":"orbitCC"} ${1.4+i*0.22}s linear infinite` }}
@@ -157,7 +263,7 @@ export default function App() {
             ))}
           </svg>
           <div style={{ fontFamily:"'DM Serif Display',serif", fontStyle:"italic",
-                        fontSize:"14px", color:"#4a4a4a" }}>
+                        fontSize:"18px", color:T.body }}>
             Mapping circles for {zip}…
           </div>
         </div>
@@ -171,11 +277,11 @@ export default function App() {
             {/* Location Banner */}
             <div style={{ textAlign:"center", marginBottom:"20px", animation:"fadeIn 0.6s ease both" }}>
               <div style={{ fontFamily:"'Bebas Neue',sans-serif",
-                            fontSize:"clamp(20px,3.5vw,32px)", letterSpacing:"0.08em", color:"#C9A84C" }}>
+                            fontSize:"clamp(28px,4.5vw,42px)", letterSpacing:"0.08em", color:T.gold }}>
                 {loc.city}, {loc.stateAbbr}
               </div>
-              <div style={{ fontSize:"9.5px", fontWeight:500, letterSpacing:"0.2em",
-                            textTransform:"uppercase", color:"#3a3a3a", marginTop:"3px" }}>
+              <div style={{ fontSize:"14px", fontWeight:700, letterSpacing:"0.12em",
+                            textTransform:"uppercase", color:T.muted, marginTop:"3px" }}>
                 {loc.county} · {loc.region} · ZIP {zip}
               </div>
             </div>
@@ -184,19 +290,19 @@ export default function App() {
             {hasCompression && (
               <div style={{
                 width:"100%", maxWidth:"1100px",
-                background:"linear-gradient(90deg,rgba(192,57,43,0.13),rgba(192,57,43,0.05),rgba(192,57,43,0.13))",
-                border:"1px solid rgba(192,57,43,0.35)", borderRadius:"5px",
-                padding:"10px 16px", marginBottom:"22px",
+                background:"rgba(179,38,30,0.07)",
+                border:"1px solid rgba(179,38,30,0.4)", borderRadius:6,
+                padding:"14px 18px", marginBottom:"22px",
                 display:"flex", alignItems:"flex-start", gap:"10px",
                 animation:"fadeIn 0.6s ease both"
               }}>
-                <span style={{ flexShrink:0, paddingTop:2, fontSize:"14px" }}>⚠</span>
+                <span style={{ flexShrink:0, fontSize:"18px", color:"#a32018" }}>⚠</span>
                 <div>
-                  <div style={{ fontSize:"9px", fontWeight:600, letterSpacing:"0.22em",
-                                textTransform:"uppercase", color:"#f08080", marginBottom:"3px" }}>
+                  <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.14em",
+                                textTransform:"uppercase", color:"#a32018", marginBottom:"4px" }}>
                     Compression Event — {loc.city}, {loc.stateAbbr}
                   </div>
-                  <div style={{ fontSize:"11.5px", color:"#906060", lineHeight:1.55 }}>
+                  <div style={{ fontSize:"15px", color:T.body, lineHeight:1.55 }}>
                     {(result.compressionEvents || []).join(" · ") || "Outer-ring forces are bleeding into inner-circle realities."}
                   </div>
                 </div>
@@ -211,41 +317,26 @@ export default function App() {
               {/* ── SVG DIAGRAM ── */}
               <div style={{ flexShrink:0, animation:"fadeIn 0.7s ease 0.1s both" }}>
                 <svg viewBox="-12 -12 484 484"
-                  style={{ width:"min(450px, 88vw)", height:"min(450px, 88vw)",
-                           filter:"drop-shadow(0 0 44px rgba(201,168,76,0.1))",
-                           overflow:"visible" }}>
-                  <defs>
-                    <radialGradient id="bgGrd" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#140e04"/>
-                      <stop offset="100%" stopColor="#07070a"/>
-                    </radialGradient>
-                    <radialGradient id="glowG" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="#C9A84C" stopOpacity="0.22"/>
-                      <stop offset="100%" stopColor="#C9A84C" stopOpacity="0"/>
-                    </radialGradient>
-                  </defs>
-
-                  <circle cx="230" cy="230" r="230" fill="url(#bgGrd)"/>
-
+                  style={{ width:"min(500px, 90vw)", height:"min(500px, 90vw)", overflow:"visible" }}>
                   {[5,4,3,2,1].map(n => {
                     const r      = RADII[n-1];
                     const status = circ(n)?.status || "normal";
                     const hot    = status !== "normal";
                     const stroke = result ? cfg(n).stroke : DEF_STROKES[n-1];
-                    const fill   = n === 1 ? "#C9A84C" : DEF_FILLS[n-1];
+                    const fill   = DEF_FILLS[n-1];
                     const delay  = (5-n) * 0.11;
                     return (
                       <g key={n}>
                         <circle cx="230" cy="230" r={r}
                           fill={fill} stroke={stroke}
-                          strokeWidth={n === 1 ? 2.5 : 1.8}
+                          strokeWidth={hot ? 3 : 2}
                           strokeDasharray={1500}
                           style={{ animation:`ringIn 1.4s cubic-bezier(0.4,0,0.2,1) ${delay}s both` }}
                         />
                         {hot && n > 1 && (
                           <circle cx="230" cy="230" r={r}
                             fill="none" stroke={stroke}
-                            strokeWidth={status === "pressure" ? 3 : 2}
+                            strokeWidth={status === "pressure" ? 4 : 3}
                             style={{ animation:"hotPulse 3s ease-in-out infinite" }}
                           />
                         )}
@@ -253,18 +344,16 @@ export default function App() {
                     );
                   })}
 
-                  <circle cx="230" cy="230" r="74" fill="url(#glowG)"/>
-
                   <g style={{ transformBox:"fill-box", transformOrigin:"center",
                                animation:"beat 3s ease-in-out infinite" }}>
-                    <circle cx="230" cy="230" r="34" fill="#C9A84C"/>
-                    <circle cx="230" cy="230" r="21" fill="#07070a"/>
-                    <text x="230" y="226" textAnchor="middle"
-                          fontFamily="'Bebas Neue',sans-serif" fontSize="7.5"
-                          fill="#C9A84C" letterSpacing="0.1em">YOU</text>
-                    <text x="230" y="237" textAnchor="middle"
-                          fontFamily="'Bebas Neue',sans-serif" fontSize="6.5"
-                          fill="#e4c97e" letterSpacing="0.07em">{zip}</text>
+                    <circle cx="230" cy="230" r="34" fill="#8a6a1c"/>
+                    <circle cx="230" cy="230" r="23" fill="#fffaf0"/>
+                    <text x="230" y="228" textAnchor="middle"
+                          fontFamily="'Bebas Neue',sans-serif" fontSize="11"
+                          fill="#3a2c0c" letterSpacing="0.08em">YOU</text>
+                    <text x="230" y="240" textAnchor="middle"
+                          fontFamily="'DM Sans',sans-serif" fontWeight="700" fontSize="9"
+                          fill="#5a430a">{zip}</text>
                   </g>
 
                   {[1,2,3,4,5].map(n => {
@@ -280,10 +369,10 @@ export default function App() {
                     return (
                       <g key={n}>
                         <text x="230" y={yb} textAnchor="middle"
-                              fontFamily="'Bebas Neue',sans-serif" fontSize="9"
-                              fill={lc} letterSpacing="0.12em">{label}</text>
-                        <text x="230" y={yb+13} textAnchor="middle"
-                              fontFamily="'DM Sans',sans-serif" fontSize="7"
+                              fontFamily="'Bebas Neue',sans-serif" fontSize="14"
+                              fill={lc} letterSpacing="0.1em">{label}</text>
+                        <text x="230" y={yb+11} textAnchor="middle"
+                              fontFamily="'DM Sans',sans-serif" fontSize="10"
                               fill={sc2} fontWeight="700">{sub}</text>
                       </g>
                     );
@@ -292,11 +381,11 @@ export default function App() {
               </div>
 
               {/* ── LEGEND ── */}
-              <div style={{ flex:1, minWidth:"270px", maxWidth:"460px",
+              <div style={{ flex:1, minWidth:"300px", maxWidth:"520px",
                             animation:"fadeIn 0.7s ease 0.2s both" }}>
-                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"10px",
-                              letterSpacing:"0.24em", color:"#383830", marginBottom:"12px",
-                              paddingBottom:"6px", borderBottom:"1px solid #141414" }}>
+                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"18px",
+                              letterSpacing:"0.16em", color:T.gold, marginBottom:"12px",
+                              paddingBottom:"6px", borderBottom:`2px solid ${T.line}` }}>
                   Circle Analysis — {loc.city}, {loc.stateAbbr} {zip}
                 </div>
 
@@ -306,61 +395,59 @@ export default function App() {
                   return (
                     <div key={n} style={{
                       display:"flex", alignItems:"flex-start", gap:"12px",
-                      marginBottom:"13px", padding:"11px 13px",
-                      borderLeft:`3px solid ${cf.border}`,
-                      borderRadius:"0 5px 5px 0",
-                      background:"rgba(255,255,255,0.012)"
+                      marginBottom:"14px", padding:"14px 16px",
+                      borderLeft:`5px solid ${cf.border}`,
+                      borderRadius:"0 8px 8px 0",
+                      background:T.card, boxShadow:"0 1px 3px rgba(60,45,10,0.08)"
                     }}>
-                      <div style={{ width:10, height:10, borderRadius:"50%", flexShrink:0,
-                                    marginTop:5, background:cf.dot, border:`2px solid ${cf.dotB}` }}/>
                       <div style={{ flex:1 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:6,
-                                      fontSize:"9px", fontWeight:500, letterSpacing:"0.14em",
-                                      color:"#333", marginBottom:"2px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8,
+                                      fontSize:"13px", fontWeight:700, letterSpacing:"0.1em",
+                                      textTransform:"uppercase", color:T.muted, marginBottom:"3px" }}>
                           Circle {n}
                           {cf.badge && (
-                            <span style={{ fontSize:"7.5px", color:cf.aCol, background:cf.aBg,
-                                           border:`1px solid ${cf.border}`, padding:"1px 5px",
-                                           borderRadius:2, letterSpacing:"0.1em" }}>
+                            <span style={{ fontSize:"12px", color:cf.aCol, background:cf.aBg,
+                                           border:`1px solid ${cf.border}`, padding:"1px 8px",
+                                           borderRadius:3, letterSpacing:"0.06em" }}>
                               {cf.badge}
                             </span>
                           )}
                         </div>
-                        <div style={{ fontFamily:"'DM Serif Display',serif", fontSize:"15px",
-                                      color:"#F5F0E8", marginBottom:"2px" }}>
+                        <div style={{ fontFamily:"'DM Serif Display',serif", fontSize:"22px",
+                                      color:T.text, marginBottom:"2px" }}>
                           {cd?.name || NAMES_DEFAULT[n-1]}
                         </div>
-                        <div style={{ fontSize:"9.5px", fontWeight:500, letterSpacing:"0.12em",
-                                      textTransform:"uppercase", color:"#504a30", marginBottom:"6px" }}>
+                        <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.08em",
+                                      textTransform:"uppercase", color:T.gold, marginBottom:"8px" }}>
                           {cd?.geography || ""}
                         </div>
                         {cd?.description && (
-                          <p style={{ fontSize:"12px", color:"#7a7a7a", lineHeight:1.56, marginBottom:"5px" }}>
+                          <p style={{ fontSize:"16px", color:T.body, lineHeight:1.55, marginBottom:"8px" }}>
                             {cd.description}
                           </p>
                         )}
                         {cd?.currentContext && (
-                          <p style={{ fontSize:"11.5px",
-                                      color: cd.status !== "normal" ? "#b07070" : "#5a5a5a",
-                                      lineHeight:1.5, fontStyle:"italic", marginBottom:"6px" }}>
+                          <p style={{ fontSize:"15.5px",
+                                      color: cd.status !== "normal" ? "#8a1a14" : T.muted,
+                                      lineHeight:1.55, fontStyle:"italic", marginBottom:"8px" }}>
                             {cd.currentContext}
                           </p>
                         )}
                         {cd?.keyIssues?.length > 0 && (
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:"4px", marginBottom:"6px" }}>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:"6px", marginBottom:"8px" }}>
                             {cd.keyIssues.map((iss,i) => (
-                              <span key={i} style={{ fontSize:"9.5px", color:"#4a4a4a",
-                                                     background:"#0e0e0e", border:"1px solid #1c1c1c",
-                                                     padding:"2px 7px", borderRadius:3 }}>
+                              <span key={i} style={{ fontSize:"14px", color:T.body,
+                                                     background:T.cardAlt, border:`1px solid ${T.line}`,
+                                                     padding:"3px 10px", borderRadius:4 }}>
                                 {iss}
                               </span>
                             ))}
                           </div>
                         )}
-                        <span style={{ display:"inline-block", fontSize:"9px", fontWeight:500,
-                                       letterSpacing:"0.18em", textTransform:"uppercase",
+                        <span style={{ display:"inline-block", fontSize:"13px", fontWeight:700,
+                                       letterSpacing:"0.12em", textTransform:"uppercase",
                                        color:cf.aCol, background:cf.aBg,
-                                       padding:"3px 8px", borderRadius:3 }}>
+                                       padding:"4px 10px", borderRadius:4 }}>
                           → {cd?.action || ["Act","Engage","Monitor","Track","Aware"][n-1]}
                         </span>
                       </div>
@@ -374,18 +461,68 @@ export default function App() {
             {result.overallAssessment && (
               <div style={{
                 width:"100%", maxWidth:"1100px",
-                borderLeft:`4px solid ${overBorder}`,
-                background:"#0d0d0d", border:"1px solid #161616",
-                borderRadius:"0 6px 6px 0", padding:"16px 20px",
+                borderLeft:`6px solid ${overBorder}`,
+                background:T.card, border:`1px solid ${T.line}`, borderLeftWidth:6, borderLeftColor:overBorder,
+                borderRadius:"0 8px 8px 0", padding:"20px 24px",
                 marginTop:"26px", animation:"fadeIn 0.7s ease 0.3s both"
               }}>
-                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"10.5px",
-                              letterSpacing:"0.2em", color:"#444", marginBottom:"7px" }}>
+                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"18px",
+                              letterSpacing:"0.14em", color:T.gold, marginBottom:"8px" }}>
                   Overall Assessment — {loc.city}, {loc.stateAbbr}
                 </div>
-                <div style={{ fontSize:"13.5px", color:"#818181", lineHeight:1.65 }}>
+                <div style={{ fontSize:"17px", color:T.body, lineHeight:1.65 }}>
                   {result.overallAssessment}
                 </div>
+              </div>
+            )}
+
+            {/* ── PERSONAL ALIGNMENT ── */}
+            {hasPersonal ? (
+              <div style={{
+                width:"100%", maxWidth:"1100px", background:"#fffaf0",
+                border:`2px solid ${T.goldBright}`, borderRadius:8, padding:"22px 24px",
+                marginTop:"22px", animation:"fadeIn 0.7s ease 0.35s both"
+              }}>
+                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"22px",
+                              letterSpacing:"0.14em", color:T.gold, marginBottom:"8px" }}>
+                  Aligned to Your Objectives
+                </div>
+                {personal.summary && (
+                  <p style={{ fontSize:"17px", color:T.body, lineHeight:1.65, marginBottom:"16px" }}>{personal.summary}</p>
+                )}
+                <div style={{ display:"flex", flexWrap:"wrap", gap:"22px" }}>
+                  {personal.priorities?.length > 0 && (
+                    <div style={{ flex:"1 1 300px" }}>
+                      <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:T.muted, marginBottom:"8px" }}>Where to focus</div>
+                      {personal.priorities.map((p,i) => (
+                        <div key={i} style={{ marginBottom:"10px", fontSize:"16px", lineHeight:1.5, color:T.body }}>
+                          <strong style={{ color:T.text }}>Circle {p.circle}: {p.focus}</strong>
+                          {p.why && <div style={{ color:T.muted }}>{p.why}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {personal.actions?.length > 0 && (
+                    <div style={{ flex:"1 1 300px" }}>
+                      <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:T.muted, marginBottom:"8px" }}>Next steps</div>
+                      <ol style={{ paddingLeft:"22px", fontSize:"16px", lineHeight:1.55, color:T.body }}>
+                        {personal.actions.map((a,i) => <li key={i} style={{ marginBottom:"6px" }}>{a}</li>)}
+                      </ol>
+                    </div>
+                  )}
+                  {personal.watchOuts?.length > 0 && (
+                    <div style={{ flex:"1 1 300px" }}>
+                      <div style={{ fontSize:"13px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:"#a32018", marginBottom:"8px" }}>Watch-outs</div>
+                      <ul style={{ paddingLeft:"22px", fontSize:"16px", lineHeight:1.55, color:T.body }}>
+                        {personal.watchOuts.map((a,i) => <li key={i} style={{ marginBottom:"6px" }}>{a}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop:"22px", fontSize:"15px", color:T.muted, textAlign:"center" }}>
+                Add your profile and objectives above, then analyze again for a personalized plan.
               </div>
             )}
 
@@ -400,18 +537,18 @@ export default function App() {
                 { icon:"🌐", title:"Calibration",      body:"Staying small isn't the goal. Staying precise is." },
               ].map((p,i) => (
                 <div key={i}
-                  style={{ flex:1, minWidth:"148px", maxWidth:"196px", textAlign:"center",
-                           padding:"14px 12px", background:"#0e0e0e",
-                           border:"1px solid #1a1a1a", borderRadius:5,
+                  style={{ flex:1, minWidth:"200px", maxWidth:"250px", textAlign:"center",
+                           padding:"18px 16px", background:T.card,
+                           border:`1px solid ${T.line}`, borderRadius:8,
                            cursor:"default", transition:"border-color 0.25s, transform 0.25s" }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor="#555"; e.currentTarget.style.transform="translateY(-3px)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor="#1a1a1a"; e.currentTarget.style.transform="translateY(0)"; }}>
-                  <div style={{ fontSize:"18px", marginBottom:"6px" }}>{p.icon}</div>
-                  <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"12px",
-                                letterSpacing:"0.1em", color:"#C9A84C", marginBottom:"4px" }}>
+                  onMouseEnter={e => { e.currentTarget.style.borderColor=T.goldBright; e.currentTarget.style.transform="translateY(-3px)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor=T.line; e.currentTarget.style.transform="translateY(0)"; }}>
+                  <div style={{ fontSize:"24px", marginBottom:"6px" }}>{p.icon}</div>
+                  <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:"19px",
+                                letterSpacing:"0.1em", color:T.gold, marginBottom:"4px" }}>
                     {p.title}
                   </div>
-                  <div style={{ fontSize:"11px", color:"#3a3a3a", lineHeight:1.5 }}>{p.body}</div>
+                  <div style={{ fontSize:"15px", color:T.body, lineHeight:1.5 }}>{p.body}</div>
                 </div>
               ))}
             </div>
@@ -422,8 +559,8 @@ export default function App() {
       {/* ── FOOTER ── */}
       <div style={{ marginTop:"44px", textAlign:"center",
                     fontFamily:"'DM Serif Display',serif", fontStyle:"italic",
-                    fontSize:"12px", color:"#222" }}>
-        A personal philosophy by <span style={{ color:"#3a3a3a" }}>Duane Brown</span>
+                    fontSize:"15px", color:T.muted }}>
+        A personal philosophy by <span style={{ color:T.text }}>Duane Brown</span>
         {" "}· Chester, Virginia · 23831
       </div>
     </div>
