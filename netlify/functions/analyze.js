@@ -38,19 +38,48 @@ async function resolveLocation(mode, query) {
     } catch { /* county stays blank; the model can fill it from the ZIP */ }
     return loc;
   }
-  const hit = (await nominatim({ q: query }))[0];
-  if (!hit) return null;
-  const a = hit.address || {};
-  return {
-    zip: a.postcode?.slice(0, 5) || "",
-    city: a.city || a.town || a.village || a.hamlet || a.suburb || a.municipality || a.county || "",
-    county: a.county || "", state: a.state || "", stateAbbr: "",
-    lat: hit.lat, lon: hit.lon, street: mode === "address" ? hit.display_name : "",
+  const fromNominatim = (hit, extra = {}) => {
+    const a = hit.address || {};
+    return {
+      zip: a.postcode?.slice(0, 5) || "",
+      city: a.city || a.town || a.village || a.hamlet || a.suburb || a.municipality || a.county || "",
+      county: a.county || "", state: a.state || "", stateAbbr: "",
+      lat: hit.lat, lon: hit.lon, matched: hit.display_name, ...extra,
+    };
   };
+
+  if (mode === "address") {
+    // 1) US Census geocoder: authoritative for US street addresses (no API key).
+    try {
+      const c = await getJson("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?" +
+        new URLSearchParams({ address: query, benchmark: "Public_AR_Current", vintage: "Current_Current",
+                              layers: "Counties", format: "json" }));
+      const m = c?.result?.addressMatches?.[0];
+      if (m) return {
+        zip: m.addressComponents?.zip || "", city: toTitle(m.addressComponents?.city || ""),
+        county: m.geographies?.Counties?.[0]?.NAME || "", state: "", stateAbbr: m.addressComponents?.state || "",
+        lat: String(m.coordinates?.y ?? ""), lon: String(m.coordinates?.x ?? ""), matched: m.matchedAddress,
+      };
+    } catch { /* fall through to the next source */ }
+    // 2) OpenStreetMap with the full text.
+    const full = (await nominatim({ q: query }))[0];
+    if (full) return fromNominatim(full);
+    // 3) Street not found: drop the house number and match the street/neighborhood.
+    const noNum = query.replace(/^\s*\d+[A-Za-z]?\s+/, "");
+    if (noNum !== query) {
+      const hit = (await nominatim({ q: noNum }))[0];
+      if (hit) return fromNominatim(hit, { approximate: true });
+    }
+    return null;
+  }
+
+  const hit = (await nominatim({ q: query }))[0];
+  return hit ? fromNominatim(hit) : null;
 }
+const toTitle = (t) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const locationText = (l) => !l ? "" :
   "\n\nResolved location (verified, authoritative):\n" +
-  [["Street address", l.street], ["City", l.city], ["County", l.county], ["State", l.state],
+  [["Matched address", l.matched], ["City", l.city], ["County", l.county], ["State", l.state || l.stateAbbr],
    ["ZIP", l.zip], ["Coordinates", l.lat && `${l.lat}, ${l.lon}`]]
     .filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n");
 

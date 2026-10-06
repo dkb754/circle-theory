@@ -140,6 +140,8 @@ export default function App() {
       for (const k of ["city", "county", "state", "stateAbbr", "zip"]) if (place?.[k]) verified[k] = place[k];
       parsed.location = { ...(parsed.location || {}), ...verified };
       parsed.verified = !!place?.city;
+      parsed.matched = place?.matched || "";
+      parsed.approximate = !!place?.approximate;
       setResult(parsed);
     } catch(e) {
       setError("Analysis failed: " + e.message);
@@ -345,7 +347,8 @@ export default function App() {
 
             {result.verified && (
               <div style={{ textAlign:"center", fontSize:"14px", color:T.muted, marginTop:"-12px", marginBottom:"16px" }}>
-                ✓ Location verified from “{query.trim()}”
+                ✓ {result.approximate ? "Street not found; matched nearby: " : "Location verified: "}
+                {result.matched || query.trim()}
               </div>
             )}
 
