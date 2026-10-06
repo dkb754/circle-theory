@@ -109,7 +109,7 @@ export default function App() {
       // Read the Anthropic server-sent event stream and collect the text deltas.
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buf = "", raw = "";
+      let buf = "", raw = "", place = null;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -120,7 +120,9 @@ export default function App() {
           if (!line.startsWith("data:")) continue;
           let ev;
           try { ev = JSON.parse(line.slice(5)); } catch { continue; }
-          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
+          if (ev.type === "resolved") {
+            place = ev.place;
+          } else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
             raw += ev.delta.text;
             setProgress(raw.length);
           } else if (ev.type === "error") {
@@ -132,7 +134,13 @@ export default function App() {
       const clean = raw.replace(/^```(?:json)?/,"").replace(/```$/,"").trim();
       const start = clean.indexOf("{"), end = clean.lastIndexOf("}");
       if (start === -1) throw new Error("No JSON in response");
-      setResult(JSON.parse(clean.slice(start, end + 1)));
+      const parsed = JSON.parse(clean.slice(start, end + 1));
+      // The verified lookup wins over anything the model wrote for the location.
+      const verified = {};
+      for (const k of ["city", "county", "state", "stateAbbr", "zip"]) if (place?.[k]) verified[k] = place[k];
+      parsed.location = { ...(parsed.location || {}), ...verified };
+      parsed.verified = !!place?.city;
+      setResult(parsed);
     } catch(e) {
       setError("Analysis failed: " + e.message);
       console.error(e);
@@ -334,6 +342,12 @@ export default function App() {
                 {[loc.county, loc.region, loc.zip && `ZIP ${loc.zip}`].filter(Boolean).join(" · ")}
               </div>
             </div>
+
+            {result.verified && (
+              <div style={{ textAlign:"center", fontSize:"14px", color:T.muted, marginTop:"-12px", marginBottom:"16px" }}>
+                ✓ Location verified from “{query.trim()}”
+              </div>
+            )}
 
             {/* Compression Alert */}
             {hasCompression && (
